@@ -53,18 +53,49 @@ const VISITOR_HASH = process.env.INFINITEPAY_VISITOR_HASH || '7c1a5f28-3d9e-4b60
 export class InfinitePayAuthError extends Error {
   constructor() {
     super(
-      'A sessão da InfinitePay expirou (401). Refaça o login em app.infinitepay.io, ' +
-        'copie o token do header Authorization e atualize INFINITEPAY_SESSION_TOKEN.',
+      'O token da InfinitePay expirou ou é inválido (401). Ele dura 30 minutos: ' +
+        'abra app.infinitepay.io, copie o Authorization de novo e cole aqui.',
     )
     this.name = 'InfinitePayAuthError'
   }
 }
 
-function headers(): Record<string, string> {
-  const token = env.infinitepay.sessionToken.trim()
+/**
+ * Token da requisição.
+ *
+ * O access token do painel **dura 30 minutos** (conferido no `exp` do JWT
+ * contra o `iat`). Por isso o valor colado na tela tem prioridade sobre o do
+ * ambiente: guardar um segredo de 30 minutos numa env var só serviria para a
+ * primeira execução depois do deploy.
+ */
+export interface InfinitePayAuth {
+  /** Token colado na hora; sem ele, cai no `INFINITEPAY_SESSION_TOKEN`. */
+  token?: string
+}
+
+function resolveToken(auth?: InfinitePayAuth): string {
+  const token = (auth?.token || env.infinitepay.sessionToken).trim()
+  if (!token) throw new Error('Token de sessão da InfinitePay não informado.')
+  // Aceita o valor colado com ou sem o prefixo "Bearer".
+  return /^bearer /i.test(token) ? token : `Bearer ${token}`
+}
+
+/** Minutos restantes do token, lendo o `exp` sem validar assinatura. */
+export function tokenMinutesLeft(token: string): number | null {
+  try {
+    const payload = token.replace(/^bearer /i, '').split('.')[1]
+    if (!payload) return null
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { exp?: number }
+    if (!claims.exp) return null
+    return Math.round((claims.exp * 1000 - Date.now()) / 60000)
+  } catch {
+    return null
+  }
+}
+
+function headers(auth?: InfinitePayAuth): Record<string, string> {
   return {
-    // Aceita o valor colado com ou sem o prefixo "Bearer".
-    Authorization: /^bearer /i.test(token) ? token : `Bearer ${token}`,
+    Authorization: resolveToken(auth),
     Accept: 'application/json',
     'x-source': CLIENT_SOURCE,
     'x-correlation-id': randomUUID(),
@@ -73,8 +104,8 @@ function headers(): Record<string, string> {
   }
 }
 
-async function get<T>(url: URL | string): Promise<T> {
-  const response = await fetch(url, { headers: headers(), cache: 'no-store' })
+async function get<T>(url: URL | string, auth?: InfinitePayAuth): Promise<T> {
+  const response = await fetch(url, { headers: headers(auth), cache: 'no-store' })
 
   if (response.status === 401 || response.status === 403) throw new InfinitePayAuthError()
   if (!response.ok) {
@@ -229,12 +260,8 @@ export function infinitePaySaleToTx(sale: InfinitePaySale): NormalizedTx | null 
 export async function fetchInfinitePaySales(
   start: IsoDate,
   end: IsoDate,
-  options: { maxPages?: number } = {},
+  options: { maxPages?: number } & InfinitePayAuth = {},
 ): Promise<NormalizedTx[]> {
-  if (!env.infinitepay.configured) {
-    throw new Error('INFINITEPAY_SESSION_TOKEN não configurado.')
-  }
-
   const out: NormalizedTx[] = []
   // 100 por página; o teto cobre ~50 mil vendas antes de parar sozinho.
   const maxPages = options.maxPages ?? 500
@@ -249,7 +276,7 @@ export async function fetchInfinitePaySales(
   let pages = 0
 
   while (next && pages < maxPages) {
-    const page: SalesPage = await get<SalesPage>(next)
+    const page: SalesPage = await get<SalesPage>(next, options)
     const results = page.results ?? []
 
     for (const sale of results) {
@@ -330,12 +357,8 @@ export function infinitePayStatementToTx(entry: StatementEntry): NormalizedTx | 
 export async function fetchInfinitePayStatements(
   start: IsoDate,
   end: IsoDate,
-  options: { maxPages?: number } = {},
+  options: { maxPages?: number } & InfinitePayAuth = {},
 ): Promise<NormalizedTx[]> {
-  if (!env.infinitepay.configured) {
-    throw new Error('INFINITEPAY_SESSION_TOKEN não configurado.')
-  }
-
   const out: NormalizedTx[] = []
   const maxPages = options.maxPages ?? 500
 
@@ -352,7 +375,7 @@ export async function fetchInfinitePayStatements(
   let pages = 0
 
   while (pages < maxPages) {
-    const page: StatementPage = await get<StatementPage>(build(cursor))
+    const page: StatementPage = await get<StatementPage>(build(cursor), options)
     const rows = page.data ?? []
 
     for (const entry of rows) {

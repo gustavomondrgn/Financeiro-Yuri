@@ -25,10 +25,17 @@ export type SyncResults = Record<string, SyncOutcome>
 /** Plataformas que só entram no sync quando têm credencial configurada. */
 export type SyncPlatform = 'infinitepay' | 'kiwify' | 'cakto'
 
-export async function syncPlatforms(
-  days: number,
-  only?: SyncPlatform[],
-): Promise<SyncResults> {
+export interface SyncOptions {
+  only?: SyncPlatform[]
+  /**
+   * Token da InfinitePay para esta execução. O access token do painel dura 30
+   * minutos, então o colado na hora vale mais que o do ambiente.
+   */
+  infinitepayToken?: string
+}
+
+export async function syncPlatforms(days: number, options: SyncOptions = {}): Promise<SyncResults> {
+  const { only, infinitepayToken } = options
   const end = today()
   const start = addDays(end, -days)
   const out: SyncResults = {}
@@ -36,13 +43,14 @@ export async function syncPlatforms(
 
   // InfinitePay primeiro: é a maior fatia da receita.
   if (wanted('infinitepay')) {
-    if (env.infinitepay.configured) {
+    if (infinitepayToken || env.infinitepay.configured) {
+      const auth = { token: infinitepayToken }
       const accountId = await resolveAccount('infinitepay', 'InfinitePay')
       out.infinitepay = await runJob(
         'sync:infinitepay',
         async () => {
-          const sales = await fetchInfinitePaySales(start, end)
-          const outflows = await fetchInfinitePayStatements(start, end)
+          const sales = await fetchInfinitePaySales(start, end, auth)
+          const outflows = await fetchInfinitePayStatements(start, end, auth)
           return ingestBatch([...sales, ...outflows], {
             batchRef: `infinitepay:${start}..${end}`,
             defaultAccountId: accountId,
@@ -51,7 +59,7 @@ export async function syncPlatforms(
         { start, end },
       )
     } else {
-      out.infinitepay = { skipped: 'token de sessão não configurado' }
+      out.infinitepay = { skipped: 'token não informado (dura 30 min, cole na tela de importação)' }
     }
   }
 

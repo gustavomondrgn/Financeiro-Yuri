@@ -12,18 +12,48 @@ já sanitizado pelo Chrome — sem `Cookie` e sem `Authorization`.
 
 ## Autenticação
 
-Header `Authorization` com o token de sessão do painel. As rotas também recebem
-`x-source`, `x-correlation-id` e, no extrato, `x-timezone`.
+Header `Authorization` com o access token do painel. As rotas também recebem
+`x-source`, `x-visitor-hash`, `x-correlation-id` e, no extrato, `x-timezone`.
 
-Como pegar o token: abrir `app.infinitepay.io` logado, F12 → aba Network →
-clicar em qualquer requisição para `*.services.production.infinitepay.io` →
-copiar o valor do header `Authorization` → colar em `INFINITEPAY_SESSION_TOKEN`
-(com ou sem o prefixo `Bearer`).
+Como pegar: abrir `app.infinitepay.io` logado, F12 → aba Network → clicar em
+qualquer requisição para `*.services.production.infinitepay.io` → copiar o valor
+do header `Authorization`.
 
-É **token de sessão, não credencial de integração**: expira. Quando expirar, o
-job registra o erro em `job_runs` com a mensagem dizendo o que fazer, e o
-`/api/health` continua verde — o sistema não quebra, só para de receber dados
-novos dessa fonte até o token ser renovado.
+### O access token dura 30 minutos
+
+Medido no JWT: `exp - iat = 1800`. É um ES256 assinado pela InfinitePay, com
+escopos de leitura (`dashboard/financial/read`, `dashboard/banking/read`,
+`nf/sales/read`, entre outros) — leitura só, nenhum escopo de escrita.
+
+Por isso **o token não mora em variável de ambiente**: é colado na tela de
+importação e usado só naquela execução, sem ficar guardado. Trinta minutos
+sobram para o backfill do histórico inteiro, que é a operação que importa.
+
+### A sessão, essa dura muito
+
+O mesmo JWT traz `signed_in_at` e `session_id`. Num token capturado em
+15/08/2026, o `signed_in_at` era **05/08/2026** — nove dias antes. Ou seja, a
+sessão do navegador sobrevive muito além dos 30 minutos, e existe alguma rota
+que troca a sessão por um access token novo.
+
+Essa rota **não** está no HAR: a captura foi feita 25 minutos depois da emissão
+do token, ainda dentro da validade, então nenhuma renovação aconteceu durante a
+gravação. Achá-la é o que separa "colar token quando quiser puxar" de
+"sincronizar sozinho de hora em hora".
+
+Como achar, quando valer a pena: deixar o painel aberto e o DevTools gravando
+por mais de 30 minutos, com "Preserve log" ligado, e exportar o HAR depois que
+uma chamada nova voltar a funcionar. A requisição de renovação vai estar ali —
+provavelmente em `auth.infinitepay.io` ou numa rota `/api/*` do próprio
+`app.infinitepay.io`, que guarda a sessão num cookie httpOnly
+(`POST /api/session/login` aparece no HAR e devolve só `{"isFinancialManager":false}`,
+o que tem cara de "a sessão foi para o cookie").
+
+### Verificação sem token válido
+
+Com um token expirado, os dois endpoints respondem **401** e uma URL inventada
+no mesmo host responde **404**. Isso confirma que os caminhos e o formato das
+requisições estão certos e que só falta credencial viva.
 
 ## Rotas usadas
 
@@ -96,8 +126,9 @@ A `sales-index` cobre o mesmo que o relatório de vendas com outro recorte; a
 
 ## Como fazer o backfill
 
-Com o token configurado, pela tela: **Importar → Sincronizar com a InfinitePay
-→ Histórico completo**.
+Em **Importar → Sincronizar com a InfinitePay**: colar o token no campo e
+clicar em **Histórico completo**. A tela lê o `exp` do próprio token e mostra
+quantos minutos restam antes de você gastar a corrida.
 
 O caminho é o mesmo do sync de toda hora, só com a janela larga — dá para
 disparar pela API se preferir:

@@ -90,17 +90,24 @@ Backup do Postgres: diário às 3h, retenção de 30 dias / 30 arquivos / 2 GB l
 
 ## Próximos passos, em ordem
 
-1. **Token de sessão da InfinitePay** — é o de maior impacto. Destrava a ingestão
-   automática de ~90% da receita e o backfill desde 2020, ambos já implementados e
-   testados contra os payloads reais. Como pegar: [docs/infinitepay-api.md](./docs/infinitepay-api.md#autenticação).
+1. **Backfill do histórico** — abrir **Importar → Sincronizar com a InfinitePay**, colar
+   um token fresco do painel e clicar em **Histórico completo**. Puxa tudo desde 2020.
+   Como pegar o token: [docs/infinitepay-api.md](./docs/infinitepay-api.md#autenticação).
 
-   Depois de colar em `INFINITEPAY_SESSION_TOKEN` nas variáveis da aplicação no Coolify
-   e redeployar, o backfill é um botão: **Importar → Sincronizar com a InfinitePay →
-   Histórico completo**. Não precisa de terminal. A partir daí a task de hora em hora
-   mantém tudo em dia sozinha.
-2. **Ver quanto tempo o token dura na prática.** Se durar semanas, está resolvido. Se
-   durar horas, aí sim vale o worker Playwright que faz login sozinho — mas só aí,
-   porque ele é bem mais caro de manter.
+   O **access token dura 30 minutos** — medido no `exp` do JWT, não estimado. Por isso
+   ele é colado na tela e usado só naquela execução, em vez de morar numa variável de
+   ambiente onde viraria segredo morto logo depois do deploy. A tela lê o `exp` e mostra
+   quantos minutos restam antes de você gastar a corrida.
+2. **Achar a rota de renovação** — é o que separa "colar token quando quiser puxar" de
+   "sincronizar sozinho de hora em hora". Sabemos que ela existe: o mesmo token trazia
+   `signed_in_at` de **nove dias antes**, então a sessão sobrevive muito além dos 30
+   minutos. Ela não está no HAR porque a captura caiu dentro da validade do token.
+
+   Para achar: deixar o painel aberto com o DevTools gravando e "Preserve log" ligado por
+   mais de 30 minutos, e exportar o HAR depois que uma chamada nova voltar a funcionar.
+
+   O worker Playwright continua sendo o plano C — só vale se a renovação se mostrar
+   inacessível, porque é bem mais caro de manter.
 3. Credenciais de Kiwify, Cakto, Google Calendar, SMTP e `ANTHROPIC_API_KEY` conforme
    forem saindo.
 4. Considerar tornar o repositório privado (hoje é público; não há segredo no código, mas

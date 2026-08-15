@@ -4,8 +4,16 @@ import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/auth'
 import { env } from '@/lib/env'
 import { syncPlatforms } from '@/lib/ingest/sync'
+import { tokenMinutesLeft } from '@/lib/ingest/adapters/infinitepay-api'
 
-/** Sincronização disparada pela tela, sem depender das scheduled tasks. */
+/**
+ * Sincronização disparada pela tela.
+ *
+ * O token da InfinitePay é colado na hora e usado só nesta execução — nada é
+ * gravado. É a resposta ao fato de o access token do painel durar 30 minutos:
+ * guardá-lo em variável de ambiente serviria para uma execução e depois viraria
+ * segredo morto no servidor.
+ */
 
 export interface SyncActionState {
   ok: boolean
@@ -19,19 +27,36 @@ export async function syncNow(
 ): Promise<SyncActionState> {
   await requireSession()
 
-  if (!env.infinitepay.configured) {
+  const token = String(formData.get('token') ?? '').trim()
+
+  if (!token && !env.infinitepay.configured) {
     return {
       ok: false,
-      message: 'Token de sessão da InfinitePay não configurado.',
+      message: 'Cole o token da InfinitePay para sincronizar.',
       detail:
-        'Defina INFINITEPAY_SESSION_TOKEN nas variáveis de ambiente. O passo a passo está em docs/infinitepay-api.md.',
+        'Em app.infinitepay.io, F12 → Network → clique numa chamada para services.production.infinitepay.io → copie o header Authorization.',
+    }
+  }
+
+  // Avisa antes de gastar minutos num backfill que vai morrer no meio.
+  if (token) {
+    const minutes = tokenMinutesLeft(token)
+    if (minutes !== null && minutes <= 0) {
+      return {
+        ok: false,
+        message: `Esse token já expirou (há ${Math.abs(minutes)} min).`,
+        detail: 'Eles duram 30 minutos. Copie um novo do painel e cole de novo.',
+      }
     }
   }
 
   const days = Math.min(5000, Math.max(1, Number(formData.get('dias') ?? 15)))
 
   try {
-    const results = await syncPlatforms(days, ['infinitepay'])
+    const results = await syncPlatforms(days, {
+      only: ['infinitepay'],
+      infinitepayToken: token || undefined,
+    })
     const result = results.infinitepay
 
     if (!result || 'skipped' in result) {

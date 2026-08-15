@@ -63,8 +63,10 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Cakto — Bearer, `GET /public_api/orders/`, paginação e UTM
 - [x] Webhook da Kiwify
 - [x] Webhook da Cakto
-- [x] InfinitePay — adaptador de API interna (vendas + extrato), pendente só do token de sessão
+- [x] InfinitePay — adaptador de API interna (vendas + extrato), confirmado com 401 real contra 404 de controle
 - [x] InfinitePay — backfill desde 2020 pelo mesmo endpoint do sync (`?dias=3000`)
+- [x] InfinitePay — token colado na hora, porque o access token dura só 30 minutos
+- [ ] **InfinitePay — rota de renovação do access token** (a sessão dura 9 dias; achar isso destrava o sync automático)
 - [ ] InfinitePay — ingestão por e-mail (IMAP / Cloudflare Email Routing) — vira plano B, o A agora é a API
 - [ ] InfinitePay — worker Playwright no Coolify — só se o token de sessão se mostrar curto demais na prática
 - [ ] Banco Inter PJ — API oficial (quando a conta migrar)
