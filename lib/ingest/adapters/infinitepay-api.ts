@@ -42,6 +42,14 @@ const STATEMENT_URL = 'https://cloudwalk-statement-api.services.production.infin
 /** Identifica o cliente como o painel faz — algumas rotas recusam sem isso. */
 const CLIENT_SOURCE = 'InfiniteDashboard/v2026.08.14-7038e28'
 
+/**
+ * O painel manda um `x-visitor-hash` fixo por navegador. Não parece ser
+ * verificado, mas vai junto porque aparece em todo preflight — e um valor
+ * estável é mais parecido com um cliente real do que um sorteado a cada
+ * requisição. Dá para trocar por env se algum dia passar a ser validado.
+ */
+const VISITOR_HASH = process.env.INFINITEPAY_VISITOR_HASH || '7c1a5f28-3d9e-4b60-8a12-5f0c9e7d4b31'
+
 export class InfinitePayAuthError extends Error {
   constructor() {
     super(
@@ -60,6 +68,7 @@ function headers(): Record<string, string> {
     Accept: 'application/json',
     'x-source': CLIENT_SOURCE,
     'x-correlation-id': randomUUID(),
+    'x-visitor-hash': VISITOR_HASH,
     'x-timezone': 'America/Sao_Paulo',
   }
 }
