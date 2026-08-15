@@ -14,7 +14,7 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Levantar endpoint de pedidos da Cakto (`GET /public_api/orders/`, com UTM por pedido)
 - [x] Definir estratégia multi-fonte com deduplicação como resposta à ausência de API
 - [x] Fechar as regras de negócio com o Gustavo (split, piso do Yuri, meta, fiscal)
-- [ ] **Sonda da API interna do `app.infinitepay.io`** — depende do HAR (ver "O que preciso de você")
+- [x] **Sonda da API interna do `app.infinitepay.io`** — HAR analisado, rotas mapeadas em [docs/infinitepay-api.md](./docs/infinitepay-api.md). **Existe API de extrato e de vendas**, com janela desde 2020: a ingestão da InfinitePay vira automática, não fica no CSV
 
 ## Fase 1 — Fundação
 
@@ -63,9 +63,10 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Cakto — Bearer, `GET /public_api/orders/`, paginação e UTM
 - [x] Webhook da Kiwify
 - [x] Webhook da Cakto
-- [ ] InfinitePay — adaptador de API interna (bloqueado pelo HAR)
-- [ ] InfinitePay — ingestão por e-mail (IMAP / Cloudflare Email Routing)
-- [ ] InfinitePay — worker Playwright no Coolify
+- [x] InfinitePay — adaptador de API interna (vendas + extrato), pendente só do token de sessão
+- [x] InfinitePay — backfill desde 2020 pelo mesmo endpoint do sync (`?dias=3000`)
+- [ ] InfinitePay — ingestão por e-mail (IMAP / Cloudflare Email Routing) — vira plano B, o A agora é a API
+- [ ] InfinitePay — worker Playwright no Coolify — só se o token de sessão se mostrar curto demais na prática
 - [ ] Banco Inter PJ — API oficial (quando a conta migrar)
 
 ## Fase 5 — Camada analítica
@@ -143,8 +144,9 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Domínio `gestao.yuridosanjos.com.br` respondendo em HTTPS (proxy da Cloudflare funcionou)
 - [x] Bootstrap idempotente no start: aplica schema e cria estrutura mínima
 - [x] `/api/health` verde em produção (banco a 1 ms pela rede interna)
-- [ ] Scheduled tasks dos crons (sync e relatório)
-- [ ] Backup diário com retenção
+- [x] Controle de migrações por arquivo (`schema_migrations`) — alteração de schema agora chega ao banco
+- [x] Scheduled tasks dos crons: sync de hora em hora, relatório semanal (segundas 8h) e mensal (dia 1, 8h)
+- [x] Backup diário do Postgres às 3h, retenção de 30 dias / 30 arquivos / 2 GB
 - [ ] Worker Playwright como segundo container
 
 ---
@@ -202,17 +204,18 @@ plataformas de pagamento antes de desenhar qualquer coisa.
 ## O que preciso de você
 
 | # | Item | Destrava |
-|---|------|----------|
-| 1 | **URL da instância Coolify** | Deploy inteiro (o token já tenho; o IP `87.99.142.152` já sei pelo DNS) |
-| 1b | **Rodar `git push -u origin main`** | O commit já está feito; o push foi bloqueado nesta sessão |
-| 2 | **HAR do `app.infinitepay.io` logado** | Ingestão automática da InfinitePay |
-| 3 | **Extratos históricos da InfinitePay** (CSV) | Backfill do histórico real |
-| 4 | Credenciais Kiwify (client id, secret, account id) | Sync automático de infoproduto |
-| 5 | Token da Cakto | Sync automático de infoproduto |
-| 6 | Google OAuth + calendário do Yuri | Capacidade e ocupação reais |
-| 7 | Lista de serviços com preços atuais | Classificação automática afinada |
-| 8 | SMTP (ou conta Resend) | Resumo semanal por e-mail |
-| 9 | `ANTHROPIC_API_KEY` | Analista de IA |
+| --- | --- | --- |
+| 1 | **Token de sessão do `app.infinitepay.io`** | Ingestão automática e backfill desde 2020 — o passo aberto de maior impacto ([como pegar](./docs/infinitepay-api.md#autenticação)) |
+| 2 | Credenciais Kiwify (client id, secret, account id) | Sync automático de infoproduto |
+| 3 | Token da Cakto | Sync automático de infoproduto |
+| 4 | Google OAuth + calendário do Yuri | Capacidade e ocupação reais |
+| 5 | Lista de serviços com preços atuais | Classificação automática afinada |
+| 6 | SMTP (ou conta Resend) | Resumo semanal por e-mail |
+| 7 | `ANTHROPIC_API_KEY` | Analista de IA |
+
+Resolvidos: URL do Coolify, push para o GitHub e o HAR do `app.infinitepay.io`.
+Os extratos históricos em CSV deixaram de ser necessários — o backfill vem pela
+API assim que o token de sessão existir.
 
 ---
 

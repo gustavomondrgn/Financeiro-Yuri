@@ -46,6 +46,7 @@ interface ImportResult {
   processed: number
   created: number
   duplicated: number
+  updated: number
   needsReview: number
   errors: string[]
 }
@@ -270,9 +271,10 @@ export function ImportWizard() {
 
       {result && (
         <Card title="Resultado da importação">
-          <div className="grid gap-px bg-[var(--border)] sm:grid-cols-4">
+          <div className="grid gap-px bg-[var(--border)] sm:grid-cols-5">
             <ResultBox label="Processados" value={result.processed} />
             <ResultBox label="Criados" value={result.created} tone="good" />
+            <ResultBox label="Atualizados" value={result.updated ?? 0} />
             <ResultBox label="Duplicados (ignorados)" value={result.duplicated} />
             <ResultBox label="Sem classificação" value={result.needsReview} tone="warning" />
           </div>

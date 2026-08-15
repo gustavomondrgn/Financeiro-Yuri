@@ -31,6 +31,45 @@ import { MonthlyRevenueChart, DailyRevenueChart, BreakdownChart } from '@/compon
 
 export const dynamic = 'force-dynamic'
 
+interface DailyPoint {
+  date: string
+  /** Ausente nos dias que ainda não chegaram — a linha para de ser desenhada. */
+  accumulatedCents?: number
+  targetCents: number
+}
+
+/**
+ * Receita acumulada dia a dia contra o ritmo linear da meta.
+ *
+ * Função separada, e não um acumulador dentro do `map`, porque reatribuir uma
+ * variável de fora do callback durante a renderização faz o React Compiler
+ * desistir de otimizar o componente (e vira erro de lint).
+ */
+function buildDailySeries(
+  month: { start: string; end: string },
+  byDay: Array<{ date: string; grossCents: number }>,
+  targetCents: number,
+): DailyPoint[] {
+  const days = Number(month.end.slice(8, 10))
+  const dayMap = new Map(byDay.map((d) => [d.date, d.grossCents]))
+  const hoje = today()
+
+  const series: DailyPoint[] = []
+  let accumulated = 0
+
+  for (let i = 0; i < days; i += 1) {
+    const date = `${month.start.slice(0, 8)}${String(i + 1).padStart(2, '0')}`
+    accumulated += dayMap.get(date) ?? 0
+    series.push({
+      date,
+      accumulatedCents: date <= hoje ? accumulated : undefined,
+      targetCents: Math.round((targetCents / days) * (i + 1)),
+    })
+  }
+
+  return series
+}
+
 export default async function DashboardPage() {
   const month = currentMonth()
   const prev = previousMonth(month)
@@ -61,23 +100,7 @@ export default async function DashboardPage() {
   const neededForYuri = rule ? revenueNeededFor(floorSetting.yuriCents, 'yuri', rule) : null
 
   // Acumulado do mês contra o ritmo linear necessário para bater a meta.
-  const daysInMonth = Number(month.end.slice(8, 10))
-  let accumulated = 0
-  const dayMap = new Map(byDay.map((d) => [d.date, d.grossCents]))
-  const dailySeries = Array.from({ length: daysInMonth }, (_, i) => {
-    const day = String(i + 1).padStart(2, '0')
-    const date = `${month.start.slice(0, 8)}${day}`
-    accumulated += dayMap.get(date) ?? 0
-    return {
-      date,
-      accumulatedCents: date <= today() ? accumulated : Number.NaN,
-      targetCents: Math.round((goalSetting.targetCents / daysInMonth) * (i + 1)),
-    }
-  }).map((d) => ({ ...d, accumulatedCents: Number.isNaN(d.accumulatedCents) ? undefined : d.accumulatedCents })) as Array<{
-    date: string
-    accumulatedCents: number
-    targetCents: number
-  }>
+  const dailySeries = buildDailySeries(month, byDay, goalSetting.targetCents)
 
   const gap = goalSetting.targetCents - revenue.grossCents
 

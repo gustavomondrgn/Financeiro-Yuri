@@ -4,6 +4,10 @@ import { today, addDays } from '@/lib/dates'
 import { ingestBatch, runJob, resolveAccount } from '@/lib/ingest/pipeline'
 import { fetchKiwifySales } from '@/lib/ingest/adapters/kiwify'
 import { fetchCaktoOrders } from '@/lib/ingest/adapters/cakto'
+import {
+  fetchInfinitePaySales,
+  fetchInfinitePayStatements,
+} from '@/lib/ingest/adapters/infinitepay-api'
 import { refreshCustomerAggregates } from '@/lib/ingest/customers'
 import { emptyResult, type IngestResult } from '@/lib/ingest/types'
 
@@ -31,6 +35,27 @@ async function sync(days: number): Promise<Record<string, IngestResult | { skipp
   const end = today()
   const start = addDays(end, -days)
   const out: Record<string, IngestResult | { skipped: string }> = {}
+
+  // InfinitePay primeiro: é ~90% da receita. A API interna aceita janela
+  // desde 2020, então `?dias=3000` neste mesmo endpoint faz o backfill
+  // inteiro sem código separado.
+  if (env.infinitepay.configured) {
+    const accountId = await resolveAccount('infinitepay', 'InfinitePay')
+    out.infinitepay = await runJob(
+      'sync:infinitepay',
+      async () => {
+        const sales = await fetchInfinitePaySales(start, end)
+        const outflows = await fetchInfinitePayStatements(start, end)
+        return ingestBatch([...sales, ...outflows], {
+          batchRef: `infinitepay:${start}..${end}`,
+          defaultAccountId: accountId,
+        })
+      },
+      { start, end },
+    )
+  } else {
+    out.infinitepay = { skipped: 'token de sessão não configurado' }
+  }
 
   if (env.kiwify.configured) {
     const accountId = await resolveAccount('kiwify', 'Kiwify')
@@ -70,7 +95,9 @@ export async function GET(request: Request) {
   const days = Number(new URL(request.url).searchParams.get('dias') ?? 15)
 
   try {
-    const results = await sync(Math.min(365, Math.max(1, days)))
+    // O teto alto é de propósito: `?dias=3000` é o backfill do histórico
+    // inteiro, pelo mesmo caminho que o sync de toda hora.
+    const results = await sync(Math.min(5000, Math.max(1, days)))
     return NextResponse.json({ ok: true, results })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha na sincronização.'

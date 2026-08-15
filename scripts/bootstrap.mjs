@@ -34,11 +34,21 @@ async function tableExists(name) {
   return row.present
 }
 
+/**
+ * Aplica as migrações que ainda não rodaram.
+ *
+ * Controla por arquivo, numa tabela própria, em vez de perguntar "a tabela
+ * `transactions` existe?". A pergunta antiga só sabia responder se o banco
+ * estava vazio: uma vez criado, nenhuma migração nova era aplicada, e uma
+ * alteração de schema chegaria ao deploy sem chegar ao banco.
+ */
 async function applySchema() {
-  if (await tableExists('transactions')) {
-    console.log('[bootstrap] schema já aplicado')
-    return
-  }
+  await sql`
+    create table if not exists schema_migrations (
+      filename text primary key,
+      applied_at timestamptz not null default now()
+    )
+  `
 
   const dir = path.join(process.cwd(), 'drizzle')
   const files = fs
@@ -46,7 +56,25 @@ async function applySchema() {
     .filter((f) => f.endsWith('.sql'))
     .sort()
 
-  for (const file of files) {
+  const applied = new Set((await sql`select filename from schema_migrations`).map((r) => r.filename))
+
+  // Banco que já existia antes desta tabela: marca o que já está aplicado
+  // como aplicado, senão a primeira migração rodaria de novo.
+  if (applied.size === 0 && (await tableExists('transactions'))) {
+    for (const file of files) {
+      await sql`insert into schema_migrations (filename) values (${file}) on conflict do nothing`
+      applied.add(file)
+    }
+    console.log(`[bootstrap] banco preexistente — ${files.length} migração(ões) marcada(s) como aplicada(s)`)
+  }
+
+  const pending = files.filter((f) => !applied.has(f))
+  if (pending.length === 0) {
+    console.log('[bootstrap] schema em dia')
+    return
+  }
+
+  for (const file of pending) {
     const content = fs.readFileSync(path.join(dir, file), 'utf8')
     const statements = content
       .split('--> statement-breakpoint')
@@ -61,7 +89,9 @@ async function applySchema() {
         if (!/already exists/i.test(error.message)) throw error
       }
     }
-    console.log(`[bootstrap] schema aplicado: ${file} (${statements.length} comandos)`)
+
+    await sql`insert into schema_migrations (filename) values (${file}) on conflict do nothing`
+    console.log(`[bootstrap] migração aplicada: ${file} (${statements.length} comandos)`)
   }
 }
 

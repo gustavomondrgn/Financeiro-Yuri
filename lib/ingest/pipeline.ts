@@ -14,6 +14,34 @@ import { emptyResult, type IngestResult, type NormalizedTx } from './types'
  * grava a transação. Trocar a fonte não muda nada a jusante.
  */
 
+interface ExistingRow {
+  id: number
+  hash: string
+  status: string
+  grossCents: number
+  feeCents: number
+  netCents: number
+}
+
+function pickAmounts(tx: NormalizedTx) {
+  return {
+    status: tx.status,
+    grossCents: tx.grossCents,
+    feeCents: tx.feeCents,
+    netCents: tx.netCents,
+  }
+}
+
+/** A origem mudou de ideia sobre esta transação? */
+function changed(row: ExistingRow, tx: NormalizedTx): boolean {
+  return (
+    row.status !== tx.status ||
+    row.grossCents !== tx.grossCents ||
+    row.feeCents !== tx.feeCents ||
+    row.netCents !== tx.netCents
+  )
+}
+
 export interface IngestOptions {
   /** Identificador do lote (nome do arquivo, id do webhook, janela do sync). */
   batchRef?: string
@@ -35,15 +63,22 @@ export async function ingestBatch(
 
   // Uma consulta só descobre tudo que já existe — importar 3 anos de
   // extrato não pode virar milhares de idas ao banco.
-  const existing = new Set<string>()
+  const existing = new Map<string, ExistingRow>()
   const CHUNK = 500
   for (let i = 0; i < hashes.length; i += CHUNK) {
     const slice = hashes.slice(i, i + CHUNK)
     const found = await db
-      .select({ hash: transactions.dedupeHash })
+      .select({
+        id: transactions.id,
+        hash: transactions.dedupeHash,
+        status: transactions.status,
+        grossCents: transactions.grossCents,
+        feeCents: transactions.feeCents,
+        netCents: transactions.netCents,
+      })
       .from(transactions)
       .where(inArray(transactions.dedupeHash, slice))
-    for (const row of found) existing.add(row.hash)
+    for (const row of found) existing.set(row.hash, row)
   }
 
   const ruleHits: number[] = []
@@ -52,8 +87,34 @@ export async function ingestBatch(
   for (const { tx, hash } of hashed) {
     result.processed += 1
 
-    if (existing.has(hash) || seenInBatch.has(hash)) {
-      result.duplicated += 1
+    const already = existing.get(hash)
+    if (already || seenInBatch.has(hash)) {
+      // Uma venda aprovada pode virar estorno depois. Como a chave de
+      // deduplicação é o id da origem, ela continua sendo a mesma linha — e
+      // sem isto a mudança nunca chegaria ao banco: a receita ficaria
+      // superestimada para sempre.
+      if (already && !options.dryRun && changed(already, tx)) {
+        try {
+          await db
+            .update(transactions)
+            .set({
+              status: tx.status,
+              grossCents: tx.grossCents,
+              feeCents: tx.feeCents,
+              netCents: tx.netCents,
+              updatedAt: new Date(),
+            })
+            .where(eq(transactions.id, already.id))
+          result.updated += 1
+          // Reflete o novo estado, para o mesmo lote não atualizar duas vezes.
+          existing.set(hash, { ...already, ...pickAmounts(tx) })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          result.errors.push(`${tx.saleDate} ${tx.description ?? ''} (atualização): ${message}`)
+        }
+      } else {
+        result.duplicated += 1
+      }
       continue
     }
     seenInBatch.add(hash)
@@ -149,6 +210,8 @@ export async function runJob<T extends IngestResult>(
         itemsProcessed: result.processed,
         itemsCreated: result.created,
         itemsDuplicated: result.duplicated,
+        // `updated` mora no meta para não exigir migração de schema.
+        meta: { ...(meta ?? {}), updated: result.updated },
         error: result.errors.length > 0 ? result.errors.slice(0, 20).join('\n') : null,
       })
       .where(eq(jobRuns.id, run.id))

@@ -44,15 +44,25 @@ regra de divisão, categorias, produtos, meta, configurações). Existe porque o
 produção não tem porta pública — sem ele, a primeira migração exigiria abrir o firewall.
 
 Ao alterar o schema: `npm run db:generate`, commitar o SQL em `drizzle/`, e o próximo
-deploy aplica sozinho. **Atenção**: o bootstrap só aplica migrações quando a tabela
-`transactions` não existe. Para alterações futuras de schema, o passo seguinte é trocar
-essa checagem por uma tabela de controle de migrações aplicadas.
+deploy aplica sozinho. O controle é por arquivo, na tabela `schema_migrations`: cada
+`.sql` de `drizzle/` roda uma vez e fica registrado. Bancos que existiam antes dessa
+tabela são reconhecidos e marcados como já aplicados no primeiro start, então ninguém
+reexecuta a migração inicial.
 
 ## Decisões que valem lembrar
 
-- **InfinitePay não tem API de extrato.** Só `POST /links` e `POST /payment_check`. Por
-  isso a ingestão é multi-fonte com deduplicação: webhook, API, CSV e e-mail alimentam a
-  mesma tabela, e trocar a fonte não mexe em nada a jusante.
+- **A InfinitePay não tem API *pública* de extrato** (só `POST /links` e
+  `POST /payment_check`), mas o painel dela consome uma API interna que tem — mapeada em
+  [docs/infinitepay-api.md](./docs/infinitepay-api.md) a partir do HAR. A ingestão
+  multi-fonte com deduplicação continua sendo a arquitetura certa justamente por isso:
+  quando esse token de sessão expirar, trocar para CSV ou e-mail não mexe em nada a
+  jusante.
+- **Extrato não vira receita.** O Pix recebido no extrato é a mesma venda que já veio
+  pelo relatório de vendas, e o "Depósito de vendas" é a liquidação das vendas de cartão.
+  Ingerir os dois dobraria o faturamento. Do extrato entram só as saídas.
+- **Venda estornada continua `kind = 'sale'`**, com `status = 'refunded'`. Marcar como
+  `refund` a tiraria da receita *e* a subtrairia de novo no DRE — desconto em dobro de um
+  valor que nunca entrou.
 - **Divisão dos sócios**: 10% do líquido para o caixa; do que sobra, 80% Yuri / 20%
   Gustavo. Versionada por vigência e tipo de produto — nunca editar uma regra existente,
   sempre criar vigência nova.
@@ -61,25 +71,49 @@ essa checagem por uma tabela de controle de migrações aplicadas.
 - **Piso do Yuri**: R$ 8.000/mês. Vira o cálculo de faturamento mínimo em várias telas.
 - **Meta**: R$ 30k/mês até janeiro/2027.
 
+## Automações no ar
+
+Scheduled tasks do Coolify, na aplicação `financeiro-yuri`:
+
+| Task | Quando | Comando |
+| --- | --- | --- |
+| `sync-plataformas` | `0 * * * *` (de hora em hora) | `node /app/scripts/cron.mjs sync` |
+| `relatorio-semanal` | `0 8 * * 1` (segundas, 8h) | `node /app/scripts/cron.mjs semanal` |
+| `relatorio-mensal` | `0 8 1 * *` (dia 1, 8h) | `node /app/scripts/cron.mjs mensal` |
+
+O comando é um script do repositório, não um `curl` inline, por dois motivos: o campo
+`command` do Coolify é `varchar(255)` e não cabe um curl com token e query, e a imagem
+gerada pelo nixpacks não garante o `curl`. O segredo vai no header `x-cron-token`, não na
+URL, para não aparecer no log de execução da task.
+
+Backup do Postgres: diário às 3h, retenção de 30 dias / 30 arquivos / 2 GB local.
+
 ## Próximos passos, em ordem
 
-1. **Scheduled tasks no Coolify** para os crons:
-   - `curl -fsS "https://gestao.yuridosanjos.com.br/api/cron/sync?token=$CRON_SECRET&dias=15"` (a cada hora)
-   - `curl -fsS "https://gestao.yuridosanjos.com.br/api/cron/relatorio?token=$CRON_SECRET&tipo=semanal"` (segundas)
-   - `curl -fsS "https://gestao.yuridosanjos.com.br/api/cron/relatorio?token=$CRON_SECRET&tipo=mensal"` (dia 1)
-2. **Backup diário** do Postgres no Coolify com retenção.
-3. **HAR do `app.infinitepay.io`** — decide se a ingestão dos 90% da receita vira
-   automática ou fica no CSV. Passo a passo: abrir o app logado no navegador, F12 → aba
-   Network → marcar "Preserve log" → navegar pelo extrato → botão de exportar HAR → salvar
-   na pasta do projeto (o `.gitignore` já bloqueia `*.har`).
-4. **Backfill do histórico real**: exportar CSV da InfinitePay desde o início e importar
-   pela tela `/importar`.
-5. Credenciais de Kiwify, Cakto, Google Calendar, SMTP e `ANTHROPIC_API_KEY` conforme
+1. **Token de sessão da InfinitePay** — é o de maior impacto. Destrava a ingestão
+   automática de ~90% da receita e o backfill desde 2020, ambos já implementados e
+   testados contra os payloads reais. Como pegar: [docs/infinitepay-api.md](./docs/infinitepay-api.md#autenticação).
+   Depois de colar em `INFINITEPAY_SESSION_TOKEN` no Coolify, o backfill é uma chamada:
+   `GET /api/cron/sync?dias=3000` com o header `x-cron-token`.
+2. **Ver quanto tempo o token dura na prática.** Se durar semanas, está resolvido. Se
+   durar horas, aí sim vale o worker Playwright que faz login sozinho — mas só aí,
+   porque ele é bem mais caro de manter.
+3. Credenciais de Kiwify, Cakto, Google Calendar, SMTP e `ANTHROPIC_API_KEY` conforme
    forem saindo.
-6. Considerar tornar o repositório privado (hoje é público; não há segredo no código, mas
+4. Considerar tornar o repositório privado (hoje é público; não há segredo no código, mas
    a lógica de negócio fica exposta). Exige deploy key ou GitHub App no Coolify.
 
 ## Verificações já feitas
+
+Desta sessão, contra os payloads reais do HAR e o banco de desenvolvimento:
+
+- As 100 vendas do HAR mapeiam sem perda, com `bruto = líquido + taxa` fechando em todas.
+- Conversão de fuso conferida no caso que importa: `2026-08-13T02:51:49Z` vira dia **12**
+  em São Paulo, não 13.
+- Do extrato, só as 48 saídas viram transação; nenhuma entrada vira receita.
+- Reimportar o mesmo lote: 0 criados, 1 duplicado. Venda que muda para estornada:
+  0 criados, 1 atualizado, e continua sendo **uma** linha.
+- Efeito no DRE: a venda estornada sai da receita e **não** é subtraída de novo.
 
 Build de produção limpo; as 13 telas respondendo 200; rota protegida redirecionando sem
 sessão; `/api/health` verde local e em produção; exportação CSV e XLSX; **deduplicação

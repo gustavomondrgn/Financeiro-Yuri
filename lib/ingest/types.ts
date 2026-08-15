@@ -64,10 +64,12 @@ export interface IngestResult {
   processed: number
   created: number
   duplicated: number
+  /** Já existia, mas o status ou o valor mudou na origem e foi corrigido. */
+  updated: number
   needsReview: number
   errors: string[]
 }
 
 export function emptyResult(): IngestResult {
-  return { processed: 0, created: 0, duplicated: 0, needsReview: 0, errors: [] }
+  return { processed: 0, created: 0, duplicated: 0, updated: 0, needsReview: 0, errors: [] }
 }
