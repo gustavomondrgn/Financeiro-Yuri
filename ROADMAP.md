@@ -100,7 +100,7 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Fiscal (teto MEI, simulador do Simples, provisões)
 - [x] Inteligência (simulador de cenários + analista de IA)
 - [x] Importar (upload, mapeamento, prévia, histórico de execuções)
-- [ ] Configurações (usuários, produtos, integrações, jobs, backups)
+- [x] Configurações (usuários, produtos, contas, integrações, metas, marcadores)
 
 ## Fase 7 — Inteligência
 
@@ -108,24 +108,41 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Cálculo de meses até a meta por crescimento composto
 - [x] Analista de IA com retrato numérico fechado (não inventa dado)
 - [x] Histórico de análises geradas
-- [ ] Resumo automático semanal por e-mail
-- [ ] Cron de análise mensal
+- [x] Resumo semanal (números do banco, funciona mesmo sem chave de IA)
+- [x] Cron de análise mensal com envio por e-mail
 
 ## Fase 8 — API e automações
 
 - [x] Rota de importação com validação (Zod) e modo simulação
-- [x] Webhooks das plataformas de infoproduto
-- [x] Cron de sincronização (Kiwify + Cakto)
-- [x] Cron do resumo semanal
-- [x] Exportação em CSV e Excel
+- [x] Webhooks das plataformas de infoproduto (token na URL)
+- [x] Cron de sincronização (Kiwify + Cakto, janela sobreposta)
+- [x] Cron do resumo semanal e do fechamento mensal
+- [x] Exportação em CSV (ponto-e-vírgula + BOM) e Excel
 - [x] Rota de saúde para monitoramento
 - [ ] Sincronização do Google Calendar
 
+## Verificações executadas
+
+- [x] Build de produção sem erros e sem avisos de tipo
+- [x] As 13 telas respondem 200 com sessão válida
+- [x] Rota protegida sem sessão redireciona para `/login`
+- [x] `/api/health` conecta no banco (122 ms)
+- [x] Exportação de transações e DRE em CSV e XLSX
+- [x] **Deduplicação**: reimportar o mesmo lote → 0 criados, 3 duplicados
+- [x] **Sobreposição**: lote parcialmente novo → só o inédito entra
+- [x] Paleta dos gráficos validada para daltonismo e contraste
+- [x] Dados de teste do smoke test removidos do banco
+
 ## Fase 9 — Produção
 
-- [x] Repositório Git inicializado e enviado ao GitHub
+- [x] Repositório Git inicializado, primeiro commit e remote configurado
+- [ ] `git push` (bloqueado pelo classificador de permissões desta sessão — o commit está pronto)
 - [ ] Deploy no Coolify (bloqueado: falta a URL da instância)
-- [ ] Domínio `financeiro.yuridosanjos.com.br` com TLS
+- [ ] Domínio `gestao.yuridosanjos.com.br` → `87.99.142.152` (registro A criado na Cloudflare)
+- [ ] **Emitir o certificado com o proxy da Cloudflare desligado** (nuvem cinza). Com a nuvem
+      laranja ligada, o desafio HTTP-01 do Let's Encrypt não chega no servidor e o Coolify não
+      consegue emitir o certificado. Sequência: cinza → subir a aplicação → certificado emitido →
+      ligar o laranja com SSL/TLS em **Full (strict)**.
 - [ ] Postgres em produção + variáveis de ambiente
 - [ ] Scheduled tasks dos crons
 - [ ] Backup diário com retenção
@@ -133,11 +150,62 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 
 ---
 
+## Fase 10 — Plataforma "Gestão" (futuro, não agora)
+
+> Registrado a pedido do Gustavo, nas palavras dele:
+>
+> "Além desse sistema de finanças, eu quero fazer meio que um sistema de produtividade
+> também. Que obviamente não vai ser dentro de finanças, vai ser fora. Como se fosse um
+> to-do list, um Trello da vida, só que eu ainda vou delimitar melhor isso. Mas eu queria
+> manter tudo dentro do mesmo local.
+>
+> Depois, em terceiro lugar, pode surgir uma terceira coisa, como se fosse um painel de
+> gestão de conteúdo. Que eu conecto o Instagram, que eu conecto o YouTube, e aí ele
+> consegue fazer análises robustas e ideias de conteúdo pra vídeo de YouTube, ele consegue
+> fazer análises robustas de performance de carrosséis que a gente postou, de reels que a
+> gente postou da nossa conta, e trazer insights melhores do que o Instagram.
+>
+> E enfim, manter sempre as coisas importantes de gestão do negócio no mesmo lugar. E eu
+> chamei de Gestão. Então é possível que em breve esse repositório mude de nome,
+> localmente, talvez até lá no GitHub, e vire Gestão. E a gente vai criando esses lugares.
+>
+> Por enquanto só o financeiro tá bom, mas futuramente teria que ter um lugar ali de
+> entrada que eu seleciono, por exemplo, o financeiro, aí vai pro financeiro. Seleciona o
+> sistema de produtividade, tarefas da empresa, e aí vai pra esse sistema."
+
+### Módulos previstos
+
+- [ ] **Financeiro** — o que existe hoje
+- [ ] **Produtividade** — tarefas e quadros da empresa (escopo a definir)
+- [ ] **Conteúdo** — Instagram e YouTube conectados, análise de performance e ideias de pauta
+- [ ] **Entrada** — tela inicial em `gestao.yuridosanjos.com.br` onde se escolhe o módulo
+
+### Como eu faria (quando chegar a hora)
+
+Uma aplicação só, um banco só, um login só — módulos como áreas dentro dela, não como
+projetos separados. Concretamente: renomear o repositório para `Gestao`, mover as telas
+atuais para `app/(app)/financeiro/*`, abrir `app/(app)/produtividade/*` e
+`app/(app)/conteudo/*` ao lado, e transformar a raiz numa tela de entrada com os módulos.
+O schema ganha prefixo por módulo (`fin_`, `task_`, `content_`) no mesmo Postgres, e o
+`lib/` se organiza por domínio.
+
+Sessão, design system, camada de banco e infraestrutura são reaproveitados inteiros — é
+por isso que vale manter tudo junto em vez de subir três aplicações. Nenhum dado
+financeiro precisa mudar de lugar: só o caminho da URL muda.
+
+O módulo de conteúdo é o único que exige investigação prévia — a API do Instagram exige
+conta Business vinculada a uma página do Facebook e passa por revisão do app; a do YouTube
+é mais direta. Quando for a hora, faço o mesmo levantamento de viabilidade que fiz com as
+plataformas de pagamento antes de desenhar qualquer coisa.
+
+---
+
 ## O que preciso de você
 
 | # | Item | Destrava |
 |---|------|----------|
-| 1 | **URL da instância Coolify** | Deploy inteiro (o token já tenho) |
+| 1 | **URL da instância Coolify** | Deploy inteiro (o token já tenho; o IP `87.99.142.152` já sei pelo DNS) |
+| 1b | **Rodar `git push -u origin main`** | O commit já está feito; o push foi bloqueado nesta sessão |
 | 2 | **HAR do `app.infinitepay.io` logado** | Ingestão automática da InfinitePay |
 | 3 | **Extratos históricos da InfinitePay** (CSV) | Backfill do histórico real |
 | 4 | Credenciais Kiwify (client id, secret, account id) | Sync automático de infoproduto |
