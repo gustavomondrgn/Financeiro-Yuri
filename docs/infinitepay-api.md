@@ -96,8 +96,11 @@ A `sales-index` cobre o mesmo que o relatório de vendas com outro recorte; a
 
 ## Como fazer o backfill
 
-Com o token configurado, o backfill usa o mesmo endpoint do sync de toda hora,
-só com a janela larga:
+Com o token configurado, pela tela: **Importar → Sincronizar com a InfinitePay
+→ Histórico completo**.
+
+O caminho é o mesmo do sync de toda hora, só com a janela larga — dá para
+disparar pela API se preferir:
 
 ```
 GET /api/cron/sync?dias=3000    (header x-cron-token, ou ?token=)

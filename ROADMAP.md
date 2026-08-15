@@ -101,6 +101,7 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] Fiscal (teto MEI, simulador do Simples, provisões)
 - [x] Inteligência (simulador de cenários + analista de IA)
 - [x] Importar (upload, mapeamento, prévia, histórico de execuções)
+- [x] Importar — sincronização e backfill da InfinitePay por botão, sem terminal
 - [x] Configurações (usuários, produtos, contas, integrações, metas, marcadores)
 
 ## Fase 7 — Inteligência

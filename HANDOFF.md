@@ -93,8 +93,11 @@ Backup do Postgres: diário às 3h, retenção de 30 dias / 30 arquivos / 2 GB l
 1. **Token de sessão da InfinitePay** — é o de maior impacto. Destrava a ingestão
    automática de ~90% da receita e o backfill desde 2020, ambos já implementados e
    testados contra os payloads reais. Como pegar: [docs/infinitepay-api.md](./docs/infinitepay-api.md#autenticação).
-   Depois de colar em `INFINITEPAY_SESSION_TOKEN` no Coolify, o backfill é uma chamada:
-   `GET /api/cron/sync?dias=3000` com o header `x-cron-token`.
+
+   Depois de colar em `INFINITEPAY_SESSION_TOKEN` nas variáveis da aplicação no Coolify
+   e redeployar, o backfill é um botão: **Importar → Sincronizar com a InfinitePay →
+   Histórico completo**. Não precisa de terminal. A partir daí a task de hora em hora
+   mantém tudo em dia sozinha.
 2. **Ver quanto tempo o token dura na prática.** Se durar semanas, está resolvido. Se
    durar horas, aí sim vale o worker Playwright que faz login sozinho — mas só aí,
    porque ele é bem mais caro de manter.
