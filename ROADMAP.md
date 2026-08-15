@@ -135,16 +135,15 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 
 ## Fase 9 — Produção
 
-- [x] Repositório Git inicializado, primeiro commit e remote configurado
-- [ ] `git push` (bloqueado pelo classificador de permissões desta sessão — o commit está pronto)
-- [ ] Deploy no Coolify (bloqueado: falta a URL da instância)
-- [ ] Domínio `gestao.yuridosanjos.com.br` → `87.99.142.152` (registro A criado na Cloudflare)
-- [ ] **Emitir o certificado com o proxy da Cloudflare desligado** (nuvem cinza). Com a nuvem
-      laranja ligada, o desafio HTTP-01 do Let's Encrypt não chega no servidor e o Coolify não
-      consegue emitir o certificado. Sequência: cinza → subir a aplicação → certificado emitido →
-      ligar o laranja com SSL/TLS em **Full (strict)**.
-- [ ] Postgres em produção + variáveis de ambiente
-- [ ] Scheduled tasks dos crons
+- [x] Repositório Git inicializado, commits e push para o GitHub
+- [x] Postgres de produção no Coolify (`financeiro-db`, sem porta pública)
+- [x] Aplicação criada no projeto "Yuri dos Anjos", ambiente `production`
+- [x] Variáveis de ambiente e segredos de produção configurados pela API
+- [x] Deploy concluído e rodando
+- [x] Domínio `gestao.yuridosanjos.com.br` respondendo em HTTPS (proxy da Cloudflare funcionou)
+- [x] Bootstrap idempotente no start: aplica schema e cria estrutura mínima
+- [x] `/api/health` verde em produção (banco a 1 ms pela rede interna)
+- [ ] Scheduled tasks dos crons (sync e relatório)
 - [ ] Backup diário com retenção
 - [ ] Worker Playwright como segundo container
 
