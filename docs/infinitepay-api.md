@@ -15,9 +15,32 @@ já sanitizado pelo Chrome — sem `Cookie` e sem `Authorization`.
 Header `Authorization` com o access token do painel. As rotas também recebem
 `x-source`, `x-visitor-hash`, `x-correlation-id` e, no extrato, `x-timezone`.
 
-Como pegar: abrir `app.infinitepay.io` logado, F12 → aba Network → clicar em
-qualquer requisição para `*.services.production.infinitepay.io` → copiar o valor
-do header `Authorization`.
+### O atalho de navegador (caminho normal)
+
+Em **Importar → Conectar a InfinitePay** há um link para arrastar até a barra de
+favoritos. Com o painel da InfinitePay aberto, um clique nele instala uma
+interceptação de `fetch` e `XMLHttpRequest` que lê o `Authorization` que a
+própria página já envia e o repassa para `POST /api/infinitepay/token`.
+
+Enquanto a aba ficar aberta, **cada token novo é enviado assim que o painel o
+gera** — inclusive a renovação de 30 em 30 minutos. Ou seja: aba aberta, o sync
+de hora em hora funciona sozinho.
+
+O código vive em [lib/infinitepay-bookmarklet.ts](../lib/infinitepay-bookmarklet.ts)
+e não lê senha, não toca em cookie e não guarda nada no navegador. Ele só
+observa um header que a página já está mandando.
+
+Detalhe que quebra em silêncio se esquecido: as linhas são coladas sem
+separador para virar uma URL, então **nenhum comentário `//` pode existir** no
+código do atalho — ele comentaria o resto do programa inteiro. `buildBookmarklet`
+falha explicitamente se encontrar um.
+
+### À mão (alternativa)
+
+Abrir `app.infinitepay.io` logado, F12 → aba Network → clicar em qualquer
+requisição para `*.services.production.infinitepay.io` → copiar o valor do
+header `Authorization` e colar em **Importar → Sincronizar → Colar o token à
+mão**.
 
 ### O access token dura 30 minutos
 

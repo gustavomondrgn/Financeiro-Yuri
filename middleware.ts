@@ -8,7 +8,19 @@ import { jwtVerify } from 'jose'
 
 const COOKIE_NAME = 'financeiro_session'
 
-const PUBLIC_PATHS = ['/login', '/api/webhooks', '/api/cron', '/api/health']
+/**
+ * Rotas sem sessão de usuário. Não são abertas: cada uma se autentica por
+ * conta própria com segredo na URL — webhook, cron e a caixa de entrada do
+ * token da InfinitePay, que é chamada pelo atalho de navegador de dentro do
+ * `app.infinitepay.io` e nunca carrega o cookie deste domínio.
+ */
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/webhooks',
+  '/api/cron',
+  '/api/health',
+  '/api/infinitepay/token',
+]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl

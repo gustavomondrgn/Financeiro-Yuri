@@ -5,6 +5,7 @@ import { fetchKiwifySales } from './adapters/kiwify'
 import { fetchCaktoOrders } from './adapters/cakto'
 import { fetchInfinitePaySales, fetchInfinitePayStatements } from './adapters/infinitepay-api'
 import { refreshCustomerAggregates } from './customers'
+import { getInfinitePayToken } from './infinitepay-token'
 import type { IngestResult } from './types'
 
 /**
@@ -43,8 +44,13 @@ export async function syncPlatforms(days: number, options: SyncOptions = {}): Pr
 
   // InfinitePay primeiro: é a maior fatia da receita.
   if (wanted('infinitepay')) {
-    if (infinitepayToken || env.infinitepay.configured) {
-      const auth = { token: infinitepayToken }
+    // Ordem de preferência: colado agora > capturado pelo atalho > ambiente.
+    // O do ambiente vem por último porque um token de 30 minutos gravado numa
+    // env var quase sempre já morreu.
+    const token = infinitepayToken || (await getInfinitePayToken()) || undefined
+
+    if (token || env.infinitepay.configured) {
+      const auth = { token }
       const accountId = await resolveAccount('infinitepay', 'InfinitePay')
       out.infinitepay = await runJob(
         'sync:infinitepay',
@@ -59,7 +65,9 @@ export async function syncPlatforms(days: number, options: SyncOptions = {}): Pr
         { start, end },
       )
     } else {
-      out.infinitepay = { skipped: 'token não informado (dura 30 min, cole na tela de importação)' }
+      out.infinitepay = {
+        skipped: 'sem token válido — o do painel dura 30 min; use o atalho na tela de importação',
+      }
     }
   }
 

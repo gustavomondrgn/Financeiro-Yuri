@@ -66,7 +66,9 @@ Meta do negócio: **R$ 30k/mês recorrentes até janeiro/2027**.
 - [x] InfinitePay — adaptador de API interna (vendas + extrato), confirmado com 401 real contra 404 de controle
 - [x] InfinitePay — backfill desde 2020 pelo mesmo endpoint do sync (`?dias=3000`)
 - [x] InfinitePay — token colado na hora, porque o access token dura só 30 minutos
-- [ ] **InfinitePay — rota de renovação do access token** (a sessão dura 9 dias; achar isso destrava o sync automático)
+- [x] InfinitePay — atalho de navegador que captura o token sozinho e reenvia a cada renovação
+- [x] Segredos cifrados em repouso (AES-256-GCM) — `ENCRYPTION_KEY` finalmente em uso
+- [ ] **InfinitePay — rota de renovação do access token** (a sessão dura 9 dias; achar isso tira a dependência de aba aberta)
 - [ ] InfinitePay — ingestão por e-mail (IMAP / Cloudflare Email Routing) — vira plano B, o A agora é a API
 - [ ] InfinitePay — worker Playwright no Coolify — só se o token de sessão se mostrar curto demais na prática
 - [ ] Banco Inter PJ — API oficial (quando a conta migrar)

@@ -90,21 +90,27 @@ Backup do Postgres: diário às 3h, retenção de 30 dias / 30 arquivos / 2 GB l
 
 ## Próximos passos, em ordem
 
-1. **Backfill do histórico** — abrir **Importar → Sincronizar com a InfinitePay**, colar
-   um token fresco do painel e clicar em **Histórico completo**. Puxa tudo desde 2020.
-   Como pegar o token: [docs/infinitepay-api.md](./docs/infinitepay-api.md#autenticação).
+1. **Conectar e fazer o backfill** — em **Importar → Conectar a InfinitePay**, arrastar o
+   atalho para a barra de favoritos, abrir `app.infinitepay.io` logado, clicar no favorito
+   e navegar pelo painel. O token chega sozinho. Depois: **Sincronizar → Histórico
+   completo**, que puxa tudo desde 2020.
 
    O **access token dura 30 minutos** — medido no `exp` do JWT, não estimado. Por isso
-   ele é colado na tela e usado só naquela execução, em vez de morar numa variável de
-   ambiente onde viraria segredo morto logo depois do deploy. A tela lê o `exp` e mostra
-   quantos minutos restam antes de você gastar a corrida.
-2. **Achar a rota de renovação** — é o que separa "colar token quando quiser puxar" de
-   "sincronizar sozinho de hora em hora". Sabemos que ela existe: o mesmo token trazia
-   `signed_in_at` de **nove dias antes**, então a sessão sobrevive muito além dos 30
-   minutos. Ela não está no HAR porque a captura caiu dentro da validade do token.
+   ele não mora em variável de ambiente: lá viraria segredo morto minutos depois do
+   deploy. Ele chega pelo atalho, fica cifrado no banco e é usado enquanto vale.
 
-   Para achar: deixar o painel aberto com o DevTools gravando e "Preserve log" ligado por
-   mais de 30 minutos, e exportar o HAR depois que uma chamada nova voltar a funcionar.
+   Enquanto a aba do painel ficar aberta, o atalho reenvia cada token novo — inclusive as
+   renovações de 30 em 30 minutos. Na prática: **aba aberta, o sync de hora em hora
+   funciona sozinho.**
+
+2. **Achar a rota de renovação** — é o que tira a dependência de aba aberta. Sabemos que
+   ela existe: o token trazia `signed_in_at` de **nove dias antes**, então a sessão
+   sobrevive muito além dos 30 minutos. Ela não está no HAR porque a captura caiu dentro
+   da validade do token.
+
+   O atalho já ajuda a achá-la: ele manda junto a URL da chamada onde viu cada token, e
+   isso aparece em "Última captura em" na tela de importação. Quando um token **novo**
+   chegar, a origem dele aponta o caminho.
 
    O worker Playwright continua sendo o plano C — só vale se a renovação se mostrar
    inacessível, porque é bem mais caro de manter.

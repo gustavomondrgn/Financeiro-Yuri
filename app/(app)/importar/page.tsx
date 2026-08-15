@@ -7,6 +7,8 @@ import { Card, Table, Th, Td, Badge, EmptyState } from '@/components/ui/primitiv
 import { ImportWizard } from '@/components/import-wizard'
 import { SyncPanel } from '@/components/sync-panel'
 import { env } from '@/lib/env'
+import { buildBookmarklet } from '@/lib/infinitepay-bookmarklet'
+import { getTokenStatus } from '@/lib/ingest/infinitepay-token'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +23,8 @@ function updatedOf(meta: unknown): number {
 
 export default async function ImportarPage() {
   const runs = await db.select().from(jobRuns).orderBy(desc(jobRuns.startedAt)).limit(15)
+  const tokenStatus = await getTokenStatus()
+  const bookmarklet = buildBookmarklet(env.appUrl)
 
   return (
     <>
@@ -29,7 +33,7 @@ export default async function ImportarPage() {
         description="Puxe direto da InfinitePay ou suba um extrato. Reimportar o mesmo período não duplica nada."
       />
 
-      <SyncPanel configured={env.infinitepay.configured} />
+      <SyncPanel bookmarklet={bookmarklet} tokenStatus={tokenStatus} />
 
       <ImportWizard />
 
