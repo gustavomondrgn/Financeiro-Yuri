@@ -93,7 +93,15 @@ export async function ingestBatch(
       // deduplicação é o id da origem, ela continua sendo a mesma linha — e
       // sem isto a mudança nunca chegaria ao banco: a receita ficaria
       // superestimada para sempre.
-      if (already && !options.dryRun && changed(already, tx)) {
+      if (already && changed(already, tx)) {
+        // Na simulação conta como atualização sem gravar — a prévia da
+        // importação precisa dizer "isto vai mudar", não "isto é duplicado".
+        if (options.dryRun) {
+          result.updated += 1
+          existing.set(hash, { ...already, ...pickAmounts(tx) })
+          continue
+        }
+
         try {
           await db
             .update(transactions)
